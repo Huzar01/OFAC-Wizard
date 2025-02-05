@@ -1,4 +1,4 @@
-# OFAC_Wizard
+# OFAC Wizard
 Searches OFAC database for sanction entities 
 
 
