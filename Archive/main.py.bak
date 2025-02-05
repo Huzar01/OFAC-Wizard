@@ -71,7 +71,6 @@ def collect_name_variants(entry, ns):
 def extract_address(entry, ns):
     """
     Extract and return a concatenated address string from the <addressList>.
-    Joins address parts and separates multiple addresses with " | ".
     """
     address_list = entry.find("sdn:addressList", ns)
     if address_list is None:
@@ -89,7 +88,7 @@ def extract_address(entry, ns):
 
 def extract_programs(entry, ns):
     """
-    Extract programs from the <programList> element as a semicolon-separated string.
+    Extract the programs from the <programList> as a semicolon-separated string.
     """
     prog_list = entry.find("sdn:programList", ns)
     if prog_list is None:
@@ -102,7 +101,7 @@ def extract_programs(entry, ns):
 
 def extract_type(entry, ns):
     """
-    Extract the sanction type from the <sdnType> element.
+    Extract the value of <sdnType>.
     """
     type_elem = entry.find("sdn:sdnType", ns)
     return type_elem.text.strip() if type_elem is not None and type_elem.text else ""
@@ -110,7 +109,7 @@ def extract_type(entry, ns):
 def search_sdn(xml_data, name_search):
     """
     Parse the XML and return a list of dictionaries for matching entries.
-    An entry is included if any normalized name variant (official or AKA) contains the search term
+    An entry is a match if any normalized name variant (official or AKA) contains the search term
     as a whole word.
     
     Each dictionary includes:
@@ -153,29 +152,25 @@ def search_sdn(xml_data, name_search):
 
 @app.route("/search_concise", methods=["GET"])
 def search_concise():
+    # The API now expects the query parameter "name"
     name_query = request.args.get("name", "").strip()
     if not name_query:
         return jsonify({"error": "Missing required query parameter 'name'."}), 400
+
     results = search_sdn(ofac_xml_data, name_query)
+    # For concise results, return only the official names.
     names = [entry["Name"] for entry in results]
     return jsonify({"count": len(names), "names": names})
 
 @app.route("/search_full", methods=["GET"])
 def search_full():
+    # The API now expects the query parameter "name"
     name_query = request.args.get("name", "").strip()
     if not name_query:
         return jsonify({"error": "Missing required query parameter 'name'."}), 400
+
     results = search_sdn(ofac_xml_data, name_query)
     return jsonify({"count": len(results), "results": results})
-
-@app.route("/reload", methods=["POST"])
-def reload_database():
-    global ofac_xml_data
-    new_data = fetch_ofac_data(OFAC_URL)
-    if new_data is None:
-        return jsonify({"error": "Failed to reload OFAC database."}), 500
-    ofac_xml_data = new_data
-    return jsonify({"message": "OFAC database reloaded successfully."})
 
 if __name__ == "__main__":
     print("Downloading OFAC database from", OFAC_URL)

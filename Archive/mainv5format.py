@@ -1,13 +1,7 @@
 import re
-import string
 import requests
 import xml.etree.ElementTree as ET
-from flask import Flask, request, jsonify
-
-app = Flask(__name__)
-
-OFAC_URL = "https://www.treasury.gov/ofac/downloads/sdn.xml"
-ofac_xml_data = None
+import string
 
 def fetch_ofac_data(url):
     """Download the OFAC XML data from the provided URL."""
@@ -24,8 +18,10 @@ def fetch_ofac_data(url):
 
 def normalize_name(text):
     """
-    Normalize a string by replacing punctuation with spaces, converting to lower case,
-    and collapsing whitespace.
+    Normalize a name string:
+      - Replace punctuation with spaces.
+      - Convert to lower case.
+      - Collapse multiple spaces.
     """
     if not text:
         return ""
@@ -47,7 +43,8 @@ def get_official_name(entry, ns):
 def collect_name_variants(entry, ns):
     """
     Return a list of name variants for an entry.
-    The list includes the official name and any alternate names from the <akaList>.
+    The first element is the official name.
+    Then include each alternate name from the akaList.
     """
     variants = []
     official = get_official_name(entry, ns)
@@ -71,7 +68,8 @@ def collect_name_variants(entry, ns):
 def extract_address(entry, ns):
     """
     Extract and return a concatenated address string from the <addressList>.
-    Joins address parts and separates multiple addresses with " | ".
+    For each <address> element, join the values of address1, address2, city,
+    stateOrProvince, postalCode, and country (if available). Multiple addresses are separated by " | ".
     """
     address_list = entry.find("sdn:addressList", ns)
     if address_list is None:
@@ -79,6 +77,7 @@ def extract_address(entry, ns):
     addresses = []
     for addr in address_list.findall("sdn:address", ns):
         parts = []
+        # Try common address parts.
         for tag in ["address1", "address2", "city", "stateOrProvince", "postalCode", "country"]:
             elem = addr.find("sdn:" + tag, ns)
             if elem is not None and elem.text:
@@ -89,7 +88,7 @@ def extract_address(entry, ns):
 
 def extract_programs(entry, ns):
     """
-    Extract programs from the <programList> element as a semicolon-separated string.
+    Extract a semicolon-separated list of programs from the <programList>.
     """
     prog_list = entry.find("sdn:programList", ns)
     if prog_list is None:
@@ -102,19 +101,17 @@ def extract_programs(entry, ns):
 
 def extract_type(entry, ns):
     """
-    Extract the sanction type from the <sdnType> element.
+    Extract the value of <sdnType> (e.g., "Individual", "Entity", "Vessel").
     """
     type_elem = entry.find("sdn:sdnType", ns)
     return type_elem.text.strip() if type_elem is not None and type_elem.text else ""
 
-def search_sdn(xml_data, name_search):
+def search_sdn(xml_data, search_term):
     """
-    Parse the XML and return a list of dictionaries for matching entries.
-    An entry is included if any normalized name variant (official or AKA) contains the search term
-    as a whole word.
-    
-    Each dictionary includes:
-      "Name", "Address", "Type", "Program(s)", "List", "Score".
+    Parse the XML and return a list of dictionaries with fields:
+      "Name", "Address", "Type", "Program(s)", "List", "Score"
+    The entry is included if the search term (as a whole word, after normalization)
+    appears in any name variant (official or aka).
     """
     try:
         root = ET.fromstring(xml_data)
@@ -122,6 +119,7 @@ def search_sdn(xml_data, name_search):
         print("Error parsing XML:", e)
         return []
     
+    # Handle namespace if present.
     ns = {}
     if root.tag.startswith("{"):
         ns_uri = root.tag.split("}")[0][1:]
@@ -131,56 +129,82 @@ def search_sdn(xml_data, name_search):
         entry_path = "sdnEntry"
 
     results = []
-    term_norm = normalize_name(name_search)
+    term_norm = normalize_name(search_term)
     pattern = re.compile(r'\b' + re.escape(term_norm) + r'\b')
     
     for entry in root.findall(entry_path, ns):
+        # Build list of name variants.
         variants = collect_name_variants(entry, ns)
-        match = any(pattern.search(normalize_name(v)) for v in variants)
+        match = False
+        for name in variants:
+            if pattern.search(normalize_name(name)):
+                match = True
+                break
         if match:
             official = get_official_name(entry, ns)
+            # Build the dictionary with additional details.
             row = {
                 "Name": official,
                 "Address": extract_address(entry, ns),
                 "Type": extract_type(entry, ns),
                 "Program(s)": extract_programs(entry, ns),
-                "List": "SDN",
-                "Score": "100"
+                "List": "SDN",   # Hardcoded as in the web tool.
+                "Score": "100"   # Hardcoded as in the web tool.
             }
             if official and row not in results:
                 results.append(row)
     return results
 
-@app.route("/search_concise", methods=["GET"])
-def search_concise():
-    name_query = request.args.get("name", "").strip()
-    if not name_query:
-        return jsonify({"error": "Missing required query parameter 'name'."}), 400
-    results = search_sdn(ofac_xml_data, name_query)
-    names = [entry["Name"] for entry in results]
-    return jsonify({"count": len(names), "names": names})
+def print_results(results):
+    """
+    Print the results in a table format.
+    """
+    # Define column widths (adjust as needed)
+    col_widths = {
+        "Name": 40,
+        "Address": 60,
+        "Type": 12,
+        "Program(s)": 40,
+        "List": 6,
+        "Score": 6
+    }
+    header = "{:<{Name}}  {:<{Address}}  {:<{Type}}  {:<{Program(s)}}  {:<{List}}  {:<{Score}}".format(
+        "Name", "Address", "Type", "Program(s)", "List", "Score", **col_widths)
+    print(header)
+    print("-" * len(header))
+    for row in results:
+        print("{:<{Name}}  {:<{Address}}  {:<{Type}}  {:<{Program(s)}}  {:<{List}}  {:<{Score}}".format(
+            row["Name"],
+            row["Address"],
+            row["Type"],
+            row["Program(s)"],
+            row["List"],
+            row["Score"],
+            **col_widths
+        ))
 
-@app.route("/search_full", methods=["GET"])
-def search_full():
-    name_query = request.args.get("name", "").strip()
-    if not name_query:
-        return jsonify({"error": "Missing required query parameter 'name'."}), 400
-    results = search_sdn(ofac_xml_data, name_query)
-    return jsonify({"count": len(results), "results": results})
+def main():
+    # URL for the current OFAC SDN XML file (update if necessary)
+    url = "https://www.treasury.gov/ofac/downloads/sdn.xml"
+    print("Downloading OFAC database from", url)
+    xml_data = fetch_ofac_data(url)
+    if xml_data is None:
+        return
 
-@app.route("/reload", methods=["POST"])
-def reload_database():
-    global ofac_xml_data
-    new_data = fetch_ofac_data(OFAC_URL)
-    if new_data is None:
-        return jsonify({"error": "Failed to reload OFAC database."}), 500
-    ofac_xml_data = new_data
-    return jsonify({"message": "OFAC database reloaded successfully."})
+    # Loop to prompt for search terms.
+    while True:
+        search_term = input("Enter search term (or 'exit' to quit): ").strip()
+        if not search_term or search_term.lower() in ("exit", "quit"):
+            print("Exiting.")
+            break
+
+        results = search_sdn(xml_data, search_term)
+        if not results:
+            print(f"No results found for: {search_term}\n")
+        else:
+            print(f"\n# Results (Total: {len(results)}):")
+            print_results(results)
+            print()
 
 if __name__ == "__main__":
-    print("Downloading OFAC database from", OFAC_URL)
-    ofac_xml_data = fetch_ofac_data(OFAC_URL)
-    if ofac_xml_data is None:
-        print("Failed to load OFAC data; exiting.")
-    else:
-        app.run(host="0.0.0.0", port=5000)
+    main()

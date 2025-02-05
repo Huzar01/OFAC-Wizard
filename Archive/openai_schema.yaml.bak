@@ -1,0 +1,95 @@
+openapi: 3.1.0
+info:
+  title: OFAC Sanctions Search API
+  version: 1.0.0
+  description: >
+    An API to search the OFAC SDN database for sanctioned entities, individuals, or vessels.
+    Two endpoints are provided:
+      - /search_concise: Returns a concise list of matching names.
+      - /search_full: Returns full details (Name, Address, Type, Program(s), List, Score) for matching entries.
+servers:
+  - url: https://your-domain.com/api
+    description: Production server
+paths:
+  /search_concise:
+    get:
+      summary: Concise search for sanctioned names
+      description: >
+        Returns a JSON object with the total count and a list of sanctioned names that match the provided name.
+      operationId: searchConcise
+      parameters:
+        - name: name
+          in: query
+          required: true
+          description: The name to search for (e.g., "road", "shark", "tech", "mark").
+          schema:
+            type: string
+            example: "road"
+      responses:
+        "200":
+          description: Successfully retrieved matching names.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    example: 3
+                  names:
+                    type: array
+                    items:
+                      type: string
+        "400":
+          description: Missing or invalid query parameter "name".
+  /search_full:
+    get:
+      summary: Full search for sanctioned entries
+      description: >
+        Returns a JSON object with the total count and a list of matching entries. Each entry includes:
+        Name, Address, Type, Program(s), List, and Score.
+      operationId: searchFull
+      parameters:
+        - name: name
+          in: query
+          required: true
+          description: The name to search for (e.g., "road", "shark", "tech", "mark").
+          schema:
+            type: string
+            example: "tech"
+      responses:
+        "200":
+          description: Successfully retrieved full details of matching entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  count:
+                    type: integer
+                    example: 41
+                  results:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        Name:
+                          type: string
+                          example: "DRAGON ROAD LTD"
+                        Address:
+                          type: string
+                          example: "Trust Company Complex; Ajeltake Road"
+                        Type:
+                          type: string
+                          example: "Entity"
+                        "Program(s)":
+                          type: string
+                          example: "SDGT"
+                        List:
+                          type: string
+                          example: "SDN"
+                        Score:
+                          type: string
+                          example: "100"
+        "400":
+          description: Missing or invalid query parameter "name".
