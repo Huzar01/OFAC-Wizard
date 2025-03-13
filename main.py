@@ -183,4 +183,5 @@ if __name__ == "__main__":
     if ofac_xml_data is None:
         print("Failed to load OFAC data; exiting.")
     else:
-        app.run(host="0.0.0.0", port=5000)
+        port = int(os.environ.get("PORT", 8000))  # Ensure Flask uses Azure's port
+        app.run(host="0.0.0.0", port=port)
