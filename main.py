@@ -1,3 +1,4 @@
+import os
 import re
 import string
 import requests
@@ -151,6 +152,16 @@ def search_sdn(xml_data, name_search):
                 results.append(row)
     return results
 
+@app.before_first_request
+def load_ofac_data():
+    """Download the OFAC data before handling the first request."""
+    global ofac_xml_data
+    if ofac_xml_data is None:
+        print("Downloading OFAC database from", OFAC_URL)
+        ofac_xml_data = fetch_ofac_data(OFAC_URL)
+        if ofac_xml_data is None:
+            print("Failed to load OFAC data.")
+
 @app.route("/search_concise", methods=["GET"])
 def search_concise():
     name_query = request.args.get("name", "").strip()
@@ -177,11 +188,10 @@ def reload_database():
     ofac_xml_data = new_data
     return jsonify({"message": "OFAC database reloaded successfully."})
 
+# Expose the WSGI callable for Azure App Service
+application = app
+
 if __name__ == "__main__":
-    print("Downloading OFAC database from", OFAC_URL)
-    ofac_xml_data = fetch_ofac_data(OFAC_URL)
-    if ofac_xml_data is None:
-        print("Failed to load OFAC data; exiting.")
-    else:
-        port = int(os.environ.get("PORT", 8000))  # Ensure Flask uses Azure's port
-        app.run(host="0.0.0.0", port=port)
+    # For local debugging
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port)
