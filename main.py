@@ -17,17 +17,13 @@ def fetch_ofac_data(url):
         if response.status_code == 200:
             return response.content
         else:
-            print("Error fetching data. Status code:", response.status_code)
+            app.logger.error("Error fetching data. Status code: %s", response.status_code)
             return None
     except Exception as e:
-        print("Error fetching data:", e)
+        app.logger.error("Error fetching data: %s", e)
         return None
 
 def normalize_name(text):
-    """
-    Normalize a string by replacing punctuation with spaces, converting to lower case,
-    and collapsing whitespace.
-    """
     if not text:
         return ""
     translator = str.maketrans(string.punctuation, " " * len(string.punctuation))
@@ -35,10 +31,6 @@ def normalize_name(text):
     return re.sub(r'\s+', ' ', text.strip().lower())
 
 def get_official_name(entry, ns):
-    """
-    Construct the official name from <firstName> and <lastName>.
-    If <firstName> is missing, return <lastName> only.
-    """
     last_elem = entry.find("sdn:lastName", ns)
     first_elem = entry.find("sdn:firstName", ns)
     last_name = last_elem.text.strip() if last_elem is not None and last_elem.text else ""
@@ -46,10 +38,6 @@ def get_official_name(entry, ns):
     return (first_name + " " + last_name).strip() if first_name else last_name
 
 def collect_name_variants(entry, ns):
-    """
-    Return a list of name variants for an entry.
-    The list includes the official name and any alternate names from the <akaList>.
-    """
     variants = []
     official = get_official_name(entry, ns)
     if official:
@@ -70,10 +58,6 @@ def collect_name_variants(entry, ns):
     return variants
 
 def extract_address(entry, ns):
-    """
-    Extract and return a concatenated address string from the <addressList>.
-    Joins address parts and separates multiple addresses with " | ".
-    """
     address_list = entry.find("sdn:addressList", ns)
     if address_list is None:
         return ""
@@ -89,9 +73,6 @@ def extract_address(entry, ns):
     return " | ".join(addresses)
 
 def extract_programs(entry, ns):
-    """
-    Extract programs from the <programList> element as a semicolon-separated string.
-    """
     prog_list = entry.find("sdn:programList", ns)
     if prog_list is None:
         return ""
@@ -102,25 +83,14 @@ def extract_programs(entry, ns):
     return "; ".join(programs)
 
 def extract_type(entry, ns):
-    """
-    Extract the sanction type from the <sdnType> element.
-    """
     type_elem = entry.find("sdn:sdnType", ns)
     return type_elem.text.strip() if type_elem is not None and type_elem.text else ""
 
 def search_sdn(xml_data, name_search):
-    """
-    Parse the XML and return a list of dictionaries for matching entries.
-    An entry is included if any normalized name variant (official or AKA) contains the search term
-    as a whole word.
-    
-    Each dictionary includes:
-      "Name", "Address", "Type", "Program(s)", "List", "Score".
-    """
     try:
         root = ET.fromstring(xml_data)
     except Exception as e:
-        print("Error parsing XML:", e)
+        app.logger.error("Error parsing XML: %s", e)
         return []
     
     ns = {}
@@ -154,13 +124,12 @@ def search_sdn(xml_data, name_search):
 
 @app.before_first_request
 def load_ofac_data():
-    """Download the OFAC data before handling the first request."""
     global ofac_xml_data
     if ofac_xml_data is None:
-        print("Downloading OFAC database from", OFAC_URL)
+        app.logger.info("Downloading OFAC database from %s", OFAC_URL)
         ofac_xml_data = fetch_ofac_data(OFAC_URL)
         if ofac_xml_data is None:
-            print("Failed to load OFAC data.")
+            app.logger.error("Failed to load OFAC data.")
 
 @app.route("/search_concise", methods=["GET"])
 def search_concise():
@@ -188,10 +157,5 @@ def reload_database():
     ofac_xml_data = new_data
     return jsonify({"message": "OFAC database reloaded successfully."})
 
-# Expose the WSGI callable for Azure App Service
+# Expose the WSGI callable
 application = app
-
-if __name__ == "__main__":
-    # For local debugging
-    port = int(os.environ.get("PORT", 8000))
-    app.run(host="0.0.0.0", port=port)
