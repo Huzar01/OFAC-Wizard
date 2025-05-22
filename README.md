@@ -30,7 +30,7 @@ The API performs the following functions:
 
 ---
 
-## 2. Detailed Code Explanation (`main.py`)
+## 2.  main.py
 
 ### 2.1. Module Imports and Global Variables
 
@@ -110,7 +110,7 @@ The script downloads the OFAC XML data once and then starts the Flask applicatio
 
 ---
 
-## 3. API Schema Explanation (OpenAPI 3.1)
+## 3. API Schema (OpenAPI 3.1)
 
 The OpenAPI schema describes the API endpoints, parameters, and expected responses.
 
